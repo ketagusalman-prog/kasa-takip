@@ -25,10 +25,8 @@
         .btn-excel { background: #1d6f42; color: white; }
         .page { display: none; }
         .page.active { display: block; }
-        
-        .cal-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        .nav-btn { background: var(--accent); color: white; border: none; padding: 5px 15px; border-radius: 8px; cursor: pointer; font-weight: 800; }
-
+        .calendar-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .nav-btn { background: var(--bg); border: 1px solid var(--border); color: white; padding: 5px 15px; border-radius: 8px; cursor: pointer; font-weight: 800; }
         .calendar-header { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-bottom: 5px; text-align: center; font-weight: 800; font-size: 12px; color: var(--accent); }
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-top: 5px; }
         .cal-day { background: var(--bg); border: 1px solid var(--border); min-height: 95px; padding: 8px; border-radius: 8px; position: relative; }
@@ -91,7 +89,7 @@
                 </div>
             </div>
             <div class="btn-group">
-                <button class="btn btn-add" id="mainBtn" onclick="kaydet()">VERİYİ İŞLE</button>
+                <button class="btn btn-add" id="btnIsle" onclick="kaydet()">VERİYİ İŞLE</button>
                 <button class="btn" style="background:#64748b; color:white;" onclick="formuTemizle()">TEMİZLE</button>
             </div>
         </div>
@@ -112,10 +110,10 @@
 
     <div id="vardiyaPage" class="page">
         <div class="panel">
-            <div class="cal-nav">
-                <button class="nav-btn" onclick="degistirAy(-1)">◀ Geri</button>
-                <h3 id="currentMonthTitle" style="color:var(--accent);">Aylık Durum</h3>
-                <button class="nav-btn" onclick="degistirAy(1)">İleri ▶</button>
+            <div class="calendar-nav">
+                <button class="nav-btn" onclick="changeMonth(-1)">◀ Geri</button>
+                <h3 id="currentMonthTitle" style="color:var(--accent); margin:0;">Aylık Durum</h3>
+                <button class="nav-btn" onclick="changeMonth(1)">İleri ▶</button>
             </div>
             <div class="calendar-header"><div>PZT</div><div>SAL</div><div>ÇAR</div><div>PER</div><div>CUM</div><div>CMT</div><div>PAZ</div></div>
             <div class="calendar-grid" id="calendarContainer"></div>
@@ -125,7 +123,7 @@
 </div>
 
 <script>
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyJm1YcPw0HqJ6HZumC3spv7dZJC4pN8FQcisykGz6VLKtSqQrWh4cG39xIkIdI4pIq/exec";
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwe7EKKz0_xDwP1g-Fi_X4uFvDEsR8azkXVhsKPyNBErkzUx3aCibTa5q2J8CLwRdZE/exec";
 
     const PERSONEL_HAFIZA = [{sicil:"1004151", isim:"KÜBRA RAHAT"}, {sicil:"1004739", isim:"SERENAY RABİA YUMUŞAK"}, {sicil:"1005876", isim:"SERDAR SUİÇMEZ"}, 
         {sicil:"1004415", isim:"RECEP CEMAL ASLAN"}, {sicil:"1004696", isim:"ÖMER ŞAHİN"}, {sicil:"1005717", isim:"DOĞA ÇOKER"}, 
@@ -272,7 +270,7 @@
         {sicil:"1004175", isim:"HARUN ENGİN"}, {sicil:"1004098", isim:"EMRE SEYREK"}, {sicil:"1006223", isim:"SEMİH EJDER"}];
 
     let izinler = [];
-    let seciliTarih = new Date(); 
+    let currentViewDate = new Date(); // Takvimde görüntülenen tarih
     const BAZ_YIL = 2026, BAZ_AY = 4, BAZ_GUN = 6; 
 
     window.onload = async function() {
@@ -280,15 +278,16 @@
         await verileriBuluttanCek();
     };
 
-    // Tarih Kaymasını Engelleyen Fonksiyon
-    function formatTarihMetni(rawDate) {
-        if(!rawDate) return "";
-        let d = new Date(rawDate);
-        if (isNaN(d.getTime())) return rawDate; // Zaten string ise bozma
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${y}-${m}-${day}`;
+    function formatDate(dateVal) {
+        if (!dateVal) return "";
+        let d = new Date(dateVal);
+        if (isNaN(d.getTime())) return dateVal.split('T')[0];
+        let month = '' + (d.getUTCMonth() + 1),
+            day = '' + d.getUTCDate(),
+            year = d.getUTCFullYear();
+        if (month.length < 2) month = '0' + month;
+        if (day.length < 2) day = '0' + day;
+        return [year, month, day].join('-');
     }
 
     async function verileriBuluttanCek() {
@@ -296,39 +295,43 @@
             const response = await fetch(SCRIPT_URL);
             const data = await response.json();
             izinler = data.map(row => ({
-                sicil: row[0],
-                isim: row[1],
-                grup: row[2],
-                dilim: row[3],
-                baslangic: formatTarihMetni(row[4]), // Excel'den gelen veriyi metne zorla
-                bitis: formatTarihMetni(row[5]),
+                sicil: row[0], isim: row[1], grup: row[2], dilim: row[3],
+                baslangic: formatDate(row[4]),
+                bitis: formatDate(row[5]),
                 onayVeren: row[6],
-                takviye: row[7],
-                tur: row[8],
-                seciliTarihler: JSON.parse(row[9] || "[]")
+                takviye: row[7], tur: row[8],
+                seciliTarihler: JSON.parse(row[9] || "[]").map(t => formatDate(t))
             }));
             tabloyuGuncelle();
-        } catch (e) { console.error("Veri çekilemedi:", e); }
-    }
-
-    function degistirAy(yon) {
-        seciliTarih.setMonth(seciliTarih.getMonth() + yon);
-        renderCalendar();
+        } catch (e) {
+            console.error("Veri çekilemedi:", e);
+        }
     }
 
     function otomatikDoldur(tip) {
         const isimInput = document.getElementById('isim');
         const sicilInput = document.getElementById('sicil');
         let bul;
-        if(tip === 'sicil') bul = PERSONEL_HAFIZA.find(p => p.sicil === sicilInput.value);
-        else bul = PERSONEL_HAFIZA.find(p => p.isim.toUpperCase() === isimInput.value.toUpperCase());
-        if(bul) { isimInput.value = bul.isim; sicilInput.value = bul.sicil; generateSpecificDays(); }
+        if(tip === 'sicil') {
+            bul = PERSONEL_HAFIZA.find(p => p.sicil === sicilInput.value);
+        } else {
+            bul = PERSONEL_HAFIZA.find(p => p.isim.toUpperCase() === isimInput.value.toUpperCase());
+        }
+        if(bul) {
+            isimInput.value = bul.isim;
+            sicilInput.value = bul.sicil;
+            generateSpecificDays();
+        }
     }
 
     function initDataLists() {
-        const iList = document.getElementById('isimList'); const sList = document.getElementById('sicilList');
+        const iList = document.getElementById('isimList');
+        const sList = document.getElementById('sicilList');
         iList.innerHTML = ''; sList.innerHTML = '';
-        PERSONEL_HAFIZA.forEach(p => { iList.innerHTML += `<option value="${p.isim}">`; sList.innerHTML += `<option value="${p.sicil}">`; });
+        PERSONEL_HAFIZA.forEach(p => {
+            iList.innerHTML += `<option value="${p.isim}">`;
+            sList.innerHTML += `<option value="${p.sicil}">`;
+        });
     }
 
     function getVardiyaDurumu(tarihStr) {
@@ -350,22 +353,17 @@
         const container = document.getElementById('specificDaysList');
         if (!bas || !bit) return;
         container.innerHTML = '';
-        
-        let dBas = new Date(bas + 'T00:00:00'); 
-        let dBit = new Date(bit + 'T00:00:00');
-        
+        let dBas = new Date(bas);
+        let dBit = new Date(bit);
         const gunler = ["Paz", "Pzt", "Sal", "Çar", "Per", "Cum", "Cmt"];
         for (let d = new Date(dBas); d <= dBit; d.setDate(d.getDate() + 1)) {
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            const dateStr = `${y}-${m}-${day}`;
-            
+            const dateStr = formatDate(d);
             const calisanGrup = getVardiyaDurumu(dateStr);
+            const gunAdi = gunler[d.getDay()];
             const opt = document.createElement('div');
             const isGrupMatch = (calisanGrup === seciliGrup);
             opt.className = `day-opt ${isGrupMatch ? (seciliGrup === '1. Grup' ? 'g1-style' : 'g2-style') : ''}`;
-            opt.innerHTML = `<strong>${day}.${m}</strong><span>${gunler[d.getDay()]}</span>`;
+            opt.innerHTML = `<strong>${d.getDate()}.${d.getMonth()+1}</strong><span>${gunAdi}</span>`;
             opt.dataset.date = dateStr;
             opt.onclick = function() { this.classList.toggle('selected'); };
             container.appendChild(opt);
@@ -378,80 +376,30 @@
         if(val === 'Secili') generateSpecificDays();
     }
 
-    function renderCalendar() {
-        const container = document.getElementById('calendarContainer');
-        container.innerHTML = '';
-        const year = seciliTarih.getFullYear();
-        const month = seciliTarih.getMonth();
-        const firstDay = new Date(year, month, 1).getDay();
-        const startOffset = firstDay === 0 ? 6 : firstDay - 1;
-        const daysInMonth = new Date(year, month + 1, 0).getDate();
-        document.getElementById('currentMonthTitle').innerText = new Intl.DateTimeFormat('tr-TR', { month: 'long', year: 'numeric' }).format(seciliTarih);
-        for (let x = 0; x < startOffset; x++) container.innerHTML += `<div class="cal-day" style="opacity:0.2"></div>`;
-        for (let day = 1; day <= daysInMonth; day++) {
-            const dStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-            const calisanGrup = getVardiyaDurumu(dStr);
-            const gunlukKayitlar = izinler.filter(i => dStr >= i.baslangic && dStr <= i.bitis && i.grup === calisanGrup);
-            let gunduzCount = 0, geceCount = 0;
-            gunlukKayitlar.forEach(i => {
-                let lazim = (i.takviye === 'Hepsi') || (i.takviye === 'Secili' && i.seciliTarihler && i.seciliTarihler.includes(dStr));
-                if (lazim) { if (i.dilim === 'Gündüz') gunduzCount++; else geceCount++; }
-            });
-            const dayDiv = document.createElement('div');
-            dayDiv.className = `cal-day ${calisanGrup === '1. Grup' ? 'g1-work-day' : 'g2-work-day'}`;
-            let tHtml = gunduzCount > 0 ? `<span class="need-staff" style="background:#fbbf24; color:#000;">☀️ Gündüz: ${gunduzCount}</span>` : '';
-            tHtml += geceCount > 0 ? `<span class="need-staff" style="background:#475569;">🌙 Gece: ${geceCount}</span>` : '';
-            dayDiv.innerHTML = `<div class="cal-date"><span>${day}</span><span style="font-size:8px; color:var(--accent)">${calisanGrup.split(' ')[0]}</span></div>
-                <div class="cal-content">${gunlukKayitlar.length > 0 ? `<div style="font-size:10px;">🏖️${gunlukKayitlar.filter(x=>x.tur==='İzinli').length} 🏥${gunlukKayitlar.filter(x=>x.tur==='Raporlu').length}</div>` : ''}${tHtml}</div>`;
-            container.appendChild(dayDiv);
-        }
-        vardiyaRaporuOlustur();
-    }
-
     async function kaydet() {
-        const data = {
-            sicil: document.getElementById('sicil').value,
-            isim: document.getElementById('isim').value,
-            grup: document.getElementById('grup').value,
-            dilim: document.getElementById('dilim').value,
-            baslangic: document.getElementById('baslangic').value,
-            bitis: document.getElementById('bitis').value,
-            onayVeren: document.getElementById('onayVeren').value,
-            takviye: document.getElementById('takviye').value,
-            tur: document.getElementById('tur').value,
-            seciliTarihler: Array.from(document.querySelectorAll('.day-opt.selected')).map(el => el.dataset.date)
-        };
-        if(!data.isim || !data.baslangic) return alert("Eksik bilgi!");
-        const btn = document.getElementById('mainBtn');
-        btn.innerText = "İŞLENİYOR..."; btn.disabled = true;
+        const editIdx = parseInt(document.getElementById('editIndex').value);
+        const fields = ['sicil', 'isim', 'grup', 'dilim', 'baslangic', 'bitis', 'onayVeren', 'takviye', 'tur'];
+        const data = {};
+        fields.forEach(f => data[f] = document.getElementById(f).value);
+        const selectedDates = [];
+        document.querySelectorAll('.day-opt.selected').forEach(opt => selectedDates.push(opt.dataset.date));
+        data.seciliTarihler = selectedDates;
+        data.satirNo = editIdx;
+        if(!data.isim || !data.baslangic) return alert("Zorunlu alanları doldurun!");
+        const btn = document.getElementById('btnIsle');
+        btn.innerText = "İŞLENİYOR...";
+        btn.disabled = true;
         try {
-            await fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(data) });
-            const idx = document.getElementById('editIndex').value;
-            if(idx !== "-1") izinler[idx] = data; else izinler.push(data);
-            formuTemizle(); tabloyuGuncelle(); alert("Kaydedildi.");
-        } catch (e) { alert("Hata!"); } finally { btn.innerText = "VERİYİ İŞLE"; btn.disabled = false; }
-    }
-
-    function tabloyuGuncelle(data = izinler) {
-        const liste = document.getElementById('izinListesi'); liste.innerHTML = '';
-        data.forEach((item, index) => {
-            // Tabloda gösterirken DD.MM.YYYY formatına çevir
-            let bArr = item.baslangic.split('-');
-            let fBas = bArr.length === 3 ? `${bArr[2]}.${bArr[1]}.${bArr[0]}` : item.baslangic;
-            let bitArr = item.bitis.split('-');
-            let fBit = bitArr.length === 3 ? `${bitArr[2]}.${bitArr[1]}.${bitArr[0]}` : item.bitis;
-
-            liste.innerHTML += `<tr>
-                <td><span class="badge" style="border:1px solid ${item.tur === 'Raporlu' ? '#ef4444':'transparent'}">${item.tur}</span><br><span class="badge ${item.grup === '1. Grup' ? 'g1':'g2'}">${item.grup}</span></td>
-                <td><strong>${item.isim}</strong><br><small>${item.dilim}</small></td>
-                <td>${fBas} / ${fBit}</td>
-                <td>${item.takviye !== 'Yok' ? '⚠️ Takviye' : 'Yok'}</td>
-                <td>
-                    <button onclick="duzenle(${index})" style="color:#f59e0b; background:none; border:none; cursor:pointer; font-weight:800;">DÜZENLE</button>
-                    <button onclick="sil(${index})" style="color:#ef4444; background:none; border:none; cursor:pointer; font-weight:800; margin-left:10px;">SİL</button>
-                </td>
-            </tr>`;
-        });
+            await fetch(SCRIPT_URL, {
+                method: 'POST', mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if(editIdx > -1) { izinler[editIdx] = data; } else { izinler.push(data); }
+            formuTemizle(); tabloyuGuncelle(); alert("İşlem Başarılı!");
+        } catch (e) { alert("Hata oluştu."); } finally {
+            btn.innerText = "VERİYİ İŞLE"; btn.disabled = false;
+        }
     }
 
     function duzenle(index) {
@@ -467,34 +415,109 @@
         document.getElementById('takviye').value = item.takviye;
         document.getElementById('tur').value = item.tur;
         toggleDayPicker();
-        document.getElementById('mainBtn').innerText = "GÜNCELLE";
-        switchTab('kayit');
+        if(item.takviye === 'Secili') {
+            generateSpecificDays();
+            const dates = item.seciliTarihler || [];
+            setTimeout(() => {
+                document.querySelectorAll('.day-opt').forEach(opt => {
+                    if(dates.includes(opt.dataset.date)) opt.classList.add('selected');
+                });
+            }, 50);
+        }
+        document.getElementById('btnIsle').innerText = "GÜNCELLEMEYİ KAYDET";
+        window.scrollTo(0,0);
+    }
+
+    function tabloyuGuncelle(data = izinler) {
+        const liste = document.getElementById('izinListesi'); liste.innerHTML = '';
+        data.forEach((item, index) => {
+            liste.innerHTML += `<tr>
+                <td><span class="badge" style="border:1px solid ${item.tur === 'Raporlu' ? '#ef4444':'transparent'}">${item.tur}</span><br><span class="badge ${item.grup === '1. Grup' ? 'g1':'g2'}">${item.grup}</span></td>
+                <td><strong>${item.isim}</strong><br><small>${item.dilim}</small></td>
+                <td>${item.baslangic} / ${item.bitis}</td>
+                <td>${item.takviye !== 'Yok' ? '⚠️ Takviye' : 'Yok'}</td>
+                <td><button onclick="duzenle(${index})" style="color:#f59e0b; background:none; border:none; cursor:pointer; font-weight:800;">DÜZENLE</button>
+                    <button onclick="sil(${index})" style="color:#ef4444; background:none; border:none; cursor:pointer; font-weight:800; margin-left:10px;">SİL</button></td>
+            </tr>`;
+        });
     }
 
     function formuTemizle() {
         document.getElementById('editIndex').value = "-1";
         ['sicil', 'isim', 'onayVeren', 'baslangic', 'bitis'].forEach(f => document.getElementById(f).value = '');
         document.getElementById('takviye').value = 'Yok';
-        document.getElementById('mainBtn').innerText = "VERİYİ İŞLE";
+        document.getElementById('specificDaysList').innerHTML = '';
+        document.getElementById('btnIsle').innerText = "VERİYİ İŞLE";
         toggleDayPicker();
     }
 
     function switchTab(tab) {
-        document.querySelectorAll('.tab-btn, .page').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
         const btn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.textContent.includes(tab==='kayit'?'Kayıt':'Takvim'));
         if(btn) btn.classList.add('active');
         document.getElementById(tab + 'Page').classList.add('active');
         if(tab === 'vardiya') renderCalendar();
     }
 
+    function changeMonth(offset) {
+        currentViewDate.setMonth(currentViewDate.getMonth() + offset);
+        renderCalendar();
+    }
+
+    function renderCalendar() {
+        const container = document.getElementById('calendarContainer');
+        container.innerHTML = '';
+        const year = currentViewDate.getFullYear();
+        const month = currentViewDate.getMonth();
+        const firstDay = new Date(year, month, 1).getDay();
+        const startOffset = firstDay === 0 ? 6 : firstDay - 1;
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        document.getElementById('currentMonthTitle').innerText = new Intl.DateTimeFormat('tr-TR', { month: 'long', year: 'numeric' }).format(currentViewDate);
+        
+        for (let x = 0; x < startOffset; x++) container.innerHTML += `<div class="cal-day" style="opacity:0.2"></div>`;
+        
+        for (let day = 1; day <= daysInMonth; day++) {
+            const dStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+            const calisanGrup = getVardiyaDurumu(dStr);
+            const gunlukKayitlar = izinler.filter(i => dStr >= i.baslangic && dStr <= i.bitis && i.grup === calisanGrup);
+            let gunduzCount = 0, geceCount = 0;
+            gunlukKayitlar.forEach(i => {
+                let lazim = (i.takviye === 'Hepsi') || (i.takviye === 'Secili' && i.seciliTarihler && i.seciliTarihler.includes(dStr));
+                if (lazim) { if (i.dilim === 'Gündüz') gunduzCount++; else geceCount++; }
+            });
+            const dayDiv = document.createElement('div');
+            dayDiv.className = `cal-day ${calisanGrup === '1. Grup' ? 'g1-work-day' : 'g2-work-day'}`;
+            let tHtml = gunduzCount > 0 ? `<span class="need-staff" style="background:#fbbf24; color:#000;">☀️ Gündüz: ${gunduzCount}</span>` : '';
+            tHtml += geceCount > 0 ? `<span class="need-staff" style="background:#475569;">🌙 Gece: ${geceCount}</span>` : '';
+            const iznCount = gunlukKayitlar.filter(x => x.tur === 'İzinli').length;
+            const rapCount = gunlukKayitlar.filter(x => x.tur === 'Raporlu').length;
+            dayDiv.innerHTML = `<div class="cal-date"><span>${day}</span><span style="font-size:8px; color:var(--accent)">${calisanGrup.split(' ')[0]}.G</span></div>
+                <div class="cal-content">${(iznCount+rapCount) > 0 ? `<div style="font-size:10px;">${iznCount>0?'🏖️'+iznCount:''} ${rapCount>0?'🏥'+rapCount:''}</div>` : ''}${tHtml}</div>`;
+            container.appendChild(dayDiv);
+        }
+        vardiyaRaporuOlustur();
+    }
+
     function vardiyaRaporuOlustur() {
         const ozet = document.getElementById('vardiyaOzet'); ozet.innerHTML = '';
-        const y = seciliTarih.getFullYear(); const m = String(seciliTarih.getMonth() + 1).padStart(2, '0');
-        const ayFiltresi = `${y}-${m}`;
+        const year = currentViewDate.getFullYear();
+        const month = currentViewDate.getMonth();
+        
         ["1. Grup", "2. Grup"].forEach(g => {
-            const list = izinler.filter(i => i.grup === g && (i.baslangic.includes(ayFiltresi) || i.bitis.includes(ayFiltresi)));
-            let h = `<div class="panel"><h4>${g} - ${new Intl.DateTimeFormat('tr-TR', { month: 'long' }).format(seciliTarih)}</h4><ul style="list-style:none; font-size:12px; margin-top:10px;">`;
-            if(list.length === 0) h += `<li style="opacity:0.5">Kayıt yok.</li>`;
+            // Sadece seçili olan ayın içinde bir günü kapsayan kayıtları filtrele
+            const list = izinler.filter(i => {
+                const iBas = new Date(i.baslangic);
+                const iBit = new Date(i.bitis);
+                return i.grup === g && (
+                    (iBas.getMonth() === month && iBas.getFullYear() === year) || 
+                    (iBit.getMonth() === month && iBit.getFullYear() === year) ||
+                    (iBas < new Date(year, month, 1) && iBit > new Date(year, month, 30))
+                );
+            });
+
+            let h = `<div class="panel"><h4>${g} - ${new Intl.DateTimeFormat('tr-TR', { month: 'long' }).format(currentViewDate)} Kayıtları</h4><ul style="list-style:none; font-size:12px; margin-top:10px;">`;
+            if(list.length === 0) h += `<li style="opacity:0.5">Bu ay kayıt bulunmuyor.</li>`;
             list.forEach(p => h += `<li style="margin-bottom:5px; border-bottom:1px solid var(--border); padding-bottom:3px;">${p.tur === 'Raporlu' ? '🏥' : '🏖️'} ${p.isim} <span style="float:right; opacity:0.6">${p.dilim}</span></li>`);
             ozet.innerHTML += h + '</ul></div>';
         });
@@ -506,11 +529,15 @@
     }
 
     function excelAktar() {
-        const ws = XLSX.utils.json_to_sheet(izinler); const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Kayitlar"); XLSX.writeFile(wb, "M4_Rapor.xlsx");
+        const ws = XLSX.utils.json_to_sheet(izinler);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Kayitlar");
+        XLSX.writeFile(wb, "M4_Genel_Rapor.xlsx");
     }
 
-    function sil(index) { if(confirm("Siliniyor?")) { izinler.splice(index, 1); tabloyuGuncelle(); } }
+    function sil(index) {
+        if(confirm("Siliniyor?")) { izinler.splice(index, 1); tabloyuGuncelle(); }
+    }
 </script>
 </body>
 </html>
