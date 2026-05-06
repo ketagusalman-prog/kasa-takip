@@ -123,7 +123,8 @@
 </div>
 
 <script>
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwe7EKKz0_xDwP1g-Fi_X4uFvDEsR8azkXVhsKPyNBErkzUx3aCibTa5q2J8CLwRdZE/exec";
+    // WEB APP URL BURAYA
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwJWCah8CyM6nZfjXi3l4p11ZaTv0-S1YiHl-ANWm9Mkn2cR5rCkE63ZjiktcbkmwVS/exec";
 
     const PERSONEL_HAFIZA = [{sicil:"1004151", isim:"KÜBRA RAHAT"}, {sicil:"1004739", isim:"SERENAY RABİA YUMUŞAK"}, {sicil:"1005876", isim:"SERDAR SUİÇMEZ"}, 
         {sicil:"1004415", isim:"RECEP CEMAL ASLAN"}, {sicil:"1004696", isim:"ÖMER ŞAHİN"}, {sicil:"1005717", isim:"DOĞA ÇOKER"}, 
@@ -270,7 +271,7 @@
         {sicil:"1004175", isim:"HARUN ENGİN"}, {sicil:"1004098", isim:"EMRE SEYREK"}, {sicil:"1006223", isim:"SEMİH EJDER"}];
 
     let izinler = [];
-    let currentViewDate = new Date(); // Takvimde görüntülenen tarih
+    let currentViewDate = new Date();
     const BAZ_YIL = 2026, BAZ_AY = 4, BAZ_GUN = 6; 
 
     window.onload = async function() {
@@ -281,7 +282,7 @@
     function formatDate(dateVal) {
         if (!dateVal) return "";
         let d = new Date(dateVal);
-        if (isNaN(d.getTime())) return dateVal.split('T')[0];
+        if (isNaN(d.getTime())) return dateVal.toString().split('T')[0];
         let month = '' + (d.getUTCMonth() + 1),
             day = '' + d.getUTCDate(),
             year = d.getUTCFullYear();
@@ -292,15 +293,17 @@
 
     async function verileriBuluttanCek() {
         try {
-            const response = await fetch(SCRIPT_URL);
+            // Önbellek kırmak için zaman damgası ekliyoruz
+            const response = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
             const data = await response.json();
-            izinler = data.map(row => ({
+            izinler = data.map((row, idx) => ({
                 sicil: row[0], isim: row[1], grup: row[2], dilim: row[3],
                 baslangic: formatDate(row[4]),
                 bitis: formatDate(row[5]),
                 onayVeren: row[6],
                 takviye: row[7], tur: row[8],
-                seciliTarihler: JSON.parse(row[9] || "[]").map(t => formatDate(t))
+                seciliTarihler: JSON.parse(row[9] || "[]").map(t => formatDate(t)),
+                realRowIndex: idx // Excel'deki gerçek sırası
             }));
             tabloyuGuncelle();
         } catch (e) {
@@ -377,14 +380,17 @@
     }
 
     async function kaydet() {
-        const editIdx = parseInt(document.getElementById('editIndex').value);
+        const editIdx = document.getElementById('editIndex').value;
         const fields = ['sicil', 'isim', 'grup', 'dilim', 'baslangic', 'bitis', 'onayVeren', 'takviye', 'tur'];
         const data = {};
         fields.forEach(f => data[f] = document.getElementById(f).value);
         const selectedDates = [];
         document.querySelectorAll('.day-opt.selected').forEach(opt => selectedDates.push(opt.dataset.date));
         data.seciliTarihler = selectedDates;
-        data.satirNo = editIdx;
+        
+        // ÖNEMLİ: Eğer düzenleme yapılıyorsa, hafızadaki gerçek Excel satır numarasını gönderiyoruz
+        data.satirNo = (editIdx !== "-1") ? izinler[editIdx].realRowIndex : -1;
+
         if(!data.isim || !data.baslangic) return alert("Zorunlu alanları doldurun!");
         const btn = document.getElementById('btnIsle');
         btn.innerText = "İŞLENİYOR...";
@@ -395,16 +401,25 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             });
-            if(editIdx > -1) { izinler[editIdx] = data; } else { izinler.push(data); }
-            formuTemizle(); tabloyuGuncelle(); alert("İşlem Başarılı!");
-        } catch (e) { alert("Hata oluştu."); } finally {
-            btn.innerText = "VERİYİ İŞLE"; btn.disabled = false;
+            
+            setTimeout(async () => {
+                await verileriBuluttanCek();
+                formuTemizle();
+                alert("İşlem Başarılı!");
+                btn.innerText = "VERİYİ İŞLE";
+                btn.disabled = false;
+            }, 1200);
+
+        } catch (e) { 
+            alert("Hata oluştu."); 
+            btn.disabled = false;
         }
     }
 
     function duzenle(index) {
-        const item = izinler[index];
-        document.getElementById('editIndex').value = index;
+        // 'index' parametresi o an tabloda görünen sıradır.
+        const item = izinler[index]; 
+        document.getElementById('editIndex').value = index; 
         document.getElementById('sicil').value = item.sicil;
         document.getElementById('isim').value = item.isim;
         document.getElementById('grup').value = item.grup;
@@ -417,29 +432,57 @@
         toggleDayPicker();
         if(item.takviye === 'Secili') {
             generateSpecificDays();
-            const dates = item.seciliTarihler || [];
             setTimeout(() => {
+                const dates = item.seciliTarihler || [];
                 document.querySelectorAll('.day-opt').forEach(opt => {
                     if(dates.includes(opt.dataset.date)) opt.classList.add('selected');
                 });
-            }, 50);
+            }, 100);
         }
         document.getElementById('btnIsle').innerText = "GÜNCELLEMEYİ KAYDET";
         window.scrollTo(0,0);
     }
 
+    async function sil(index) {
+        if(confirm("Bu kayıt Excel'den tamamen silinsin mi?")) {
+            const item = izinler[index];
+            try {
+                await fetch(SCRIPT_URL, {
+                    method: 'POST', mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: "DELETE", satirNo: item.realRowIndex })
+                });
+                setTimeout(async () => {
+                    await verileriBuluttanCek();
+                    alert("Kayıt silindi.");
+                }, 1000);
+            } catch (e) { alert("Silme hatası."); }
+        }
+    }
+
     function tabloyuGuncelle(data = izinler) {
         const liste = document.getElementById('izinListesi'); liste.innerHTML = '';
         data.forEach((item, index) => {
+            // Not: Duzenle ve Sil fonksiyonlarına gönderilen 'index' 
+            // 'data' dizisindeki (yani filtre uygulanmış haldeki) sırasıdır.
             liste.innerHTML += `<tr>
                 <td><span class="badge" style="border:1px solid ${item.tur === 'Raporlu' ? '#ef4444':'transparent'}">${item.tur}</span><br><span class="badge ${item.grup === '1. Grup' ? 'g1':'g2'}">${item.grup}</span></td>
                 <td><strong>${item.isim}</strong><br><small>${item.dilim}</small></td>
                 <td>${item.baslangic} / ${item.bitis}</td>
                 <td>${item.takviye !== 'Yok' ? '⚠️ Takviye' : 'Yok'}</td>
-                <td><button onclick="duzenle(${index})" style="color:#f59e0b; background:none; border:none; cursor:pointer; font-weight:800;">DÜZENLE</button>
-                    <button onclick="sil(${index})" style="color:#ef4444; background:none; border:none; cursor:pointer; font-weight:800; margin-left:10px;">SİL</button></td>
+                <td>
+                    <button onclick="duzenle(${index})" style="color:#f59e0b; background:none; border:none; cursor:pointer; font-weight:800;">DÜZENLE</button>
+                    <button onclick="sil(${index})" style="color:#ef4444; background:none; border:none; cursor:pointer; font-weight:800; margin-left:10px;">SİL</button>
+                </td>
             </tr>`;
         });
+    }
+
+    function ara() {
+        const k = document.getElementById('aramaInput').value.toLowerCase();
+        // Arama yapıldığında index numaraları değişeceği için tabloyu güncellerken dikkat ediyoruz
+        const filtrelenmis = izinler.filter(i => Object.values(i).some(v => v.toString().toLowerCase().includes(k)));
+        tabloyuGuncelle(filtrelenmis);
     }
 
     function formuTemizle() {
@@ -505,27 +548,19 @@
         const month = currentViewDate.getMonth();
         
         ["1. Grup", "2. Grup"].forEach(g => {
-            // Sadece seçili olan ayın içinde bir günü kapsayan kayıtları filtrele
             const list = izinler.filter(i => {
                 const iBas = new Date(i.baslangic);
                 const iBit = new Date(i.bitis);
                 return i.grup === g && (
                     (iBas.getMonth() === month && iBas.getFullYear() === year) || 
-                    (iBit.getMonth() === month && iBit.getFullYear() === year) ||
-                    (iBas < new Date(year, month, 1) && iBit > new Date(year, month, 30))
+                    (iBit.getMonth() === month && iBit.getFullYear() === year)
                 );
             });
-
-            let h = `<div class="panel"><h4>${g} - ${new Intl.DateTimeFormat('tr-TR', { month: 'long' }).format(currentViewDate)} Kayıtları</h4><ul style="list-style:none; font-size:12px; margin-top:10px;">`;
+            let h = `<div class="panel"><h4>${g} - ${new Intl.DateTimeFormat('tr-TR', { month: 'long' }).format(currentViewDate)}</h4><ul style="list-style:none; font-size:12px; margin-top:10px;">`;
             if(list.length === 0) h += `<li style="opacity:0.5">Bu ay kayıt bulunmuyor.</li>`;
             list.forEach(p => h += `<li style="margin-bottom:5px; border-bottom:1px solid var(--border); padding-bottom:3px;">${p.tur === 'Raporlu' ? '🏥' : '🏖️'} ${p.isim} <span style="float:right; opacity:0.6">${p.dilim}</span></li>`);
             ozet.innerHTML += h + '</ul></div>';
         });
-    }
-
-    function ara() {
-        const k = document.getElementById('aramaInput').value.toLowerCase();
-        tabloyuGuncelle(izinler.filter(i => Object.values(i).some(v => v.toString().toLowerCase().includes(k))));
     }
 
     function excelAktar() {
@@ -533,10 +568,6 @@
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Kayitlar");
         XLSX.writeFile(wb, "M4_Genel_Rapor.xlsx");
-    }
-
-    function sil(index) {
-        if(confirm("Siliniyor?")) { izinler.splice(index, 1); tabloyuGuncelle(); }
     }
 </script>
 </body>
