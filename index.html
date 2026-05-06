@@ -65,7 +65,7 @@
                 <div><label>Sicil</label><input type="text" id="sicil" list="sicilList" oninput="otomatikDoldur('sicil')"></div>
                 <div><label>İsim Soyisim</label><input type="text" id="isim" list="isimList" oninput="otomatikDoldur('isim')"></div>
                 <div><label>Grup</label><select id="grup" onchange="generateSpecificDays()"><option value="1. Grup">1. Grup</option><option value="2. Grup">2. Grup</option></select></div>
-                <div><label>Dilim</label><select id="dilim"><option value="Gündüz">Gündüz</option><option value="Gece">Gece</option></select></div>
+                <div><label>Dilim</label><select id="dilim"><option value="Gündüz">Gündüz</option><option value="Gece">Gece</option><option value="Bir-Bir">Bir-Bir</option></select></div>
                 <div><label>Başlangıç</label><input type="date" id="baslangic" onchange="generateSpecificDays()"></div>
                 <div><label>Bitiş</label><input type="date" id="bitis" onchange="generateSpecificDays()"></div>
                 <div><label>Açıklama / Onay Veren</label>
@@ -267,8 +267,7 @@
         {sicil:"1005594", isim:"SELİNA KAMALTDİNOVA"}, {sicil:"1004422", isim:"NİHAT YILDIRIM"}, {sicil:"1004844", isim:"SEDA AY"}, 
         {sicil:"1006147", isim:"BAHA ÜSTÜNİŞ"}, {sicil:"1004510", isim:"BAHAR AKSÜT"}, {sicil:"1004581", isim:"MERT ÇAKRAK"}, 
         {sicil:"1005954", isim:"İPEK DOĞAN"}, {sicil:"1006276", isim:"SERKAN ASLAN"}, {sicil:"1005740", isim:"EMRE YAPICI"}, 
-        {sicil:"1004175", isim:"HARUN ENGİN"}, {sicil:"1004098", isim:"EMRE SEYREK"}, {sicil:"1006223", isim:"SEMİH EJDER"}
-];
+        {sicil:"1004175", isim:"HARUN ENGİN"}, {sicil:"1004098", isim:"EMRE SEYREK"}, {sicil:"1006223", isim:"SEMİH EJDER"}];
 
     let izinler = [];
     let currentViewDate = new Date();
@@ -279,18 +278,12 @@
         await verileriBuluttanCek();
     };
 
-    /** 
-     * TARİH KAYMA HATASINI ÇÖZEN KRİTİK FONKSİYON
-     * UTC yerine doğrudan yerel tarih parçalarını alır.
-     */
     function formatDate(dateVal) {
         if (!dateVal) return "";
         let d = new Date(dateVal);
         if (isNaN(d.getTime())) {
-            // Eğer veri zaten string gelmişse ve T içeriyorsa böl
             return dateVal.toString().includes('T') ? dateVal.split('T')[0] : dateVal;
         }
-        // Saat dilimi farkını önlemek için getFullYear/getMonth/getDate kullanılır
         let year = d.getFullYear();
         let month = String(d.getMonth() + 1).padStart(2, '0');
         let day = String(d.getDate()).padStart(2, '0');
@@ -332,16 +325,6 @@
         }
     }
 
-    function initDataLists() {
-        const iList = document.getElementById('isimList');
-        const sList = document.getElementById('sicilList');
-        iList.innerHTML = ''; sList.innerHTML = '';
-        PERSONEL_HAFIZA.forEach(p => {
-            iList.innerHTML += `<option value="${p.isim}">`;
-            sList.innerHTML += `<option value="${p.sicil}">`;
-        });
-    }
-
     function getVardiyaDurumu(tarihStr) {
         const parts = tarihStr.split('-');
         const hedef = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
@@ -361,7 +344,7 @@
         const container = document.getElementById('specificDaysList');
         if (!bas || !bit) return;
         container.innerHTML = '';
-        let dBas = new Date(bas + "T00:00:00"); // ISO string kaymasını önlemek için T00:00 ekledik
+        let dBas = new Date(bas + "T00:00:00");
         let dBit = new Date(bit + "T00:00:00");
         const gunler = ["Paz", "Pzt", "Sal", "Çar", "Per", "Cum", "Cmt"];
         for (let d = new Date(dBas); d <= dBit; d.setDate(d.getDate() + 1)) {
@@ -518,17 +501,27 @@
             const dStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
             const calisanGrup = getVardiyaDurumu(dStr);
             const gunlukKayitlar = izinler.filter(i => dStr >= i.baslangic && dStr <= i.bitis && i.grup === calisanGrup);
-            let gunduzCount = 0, geceCount = 0;
+            
+            let gunduzCount = 0, geceCount = 0, birbirCount = 0;
             gunlukKayitlar.forEach(i => {
                 let lazim = (i.takviye === 'Hepsi') || (i.takviye === 'Secili' && i.seciliTarihler && i.seciliTarihler.includes(dStr));
-                if (lazim) { if (i.dilim === 'Gündüz') gunduzCount++; else geceCount++; }
+                if (lazim) { 
+                    if (i.dilim === 'Gündüz') gunduzCount++; 
+                    else if (i.dilim === 'Gece') geceCount++;
+                    else if (i.dilim === 'Bir-Bir') birbirCount++;
+                }
             });
+
             const dayDiv = document.createElement('div');
             dayDiv.className = `cal-day ${calisanGrup === '1. Grup' ? 'g1-work-day' : 'g2-work-day'}`;
+            
             let tHtml = gunduzCount > 0 ? `<span class="need-staff" style="background:#fbbf24; color:#000;">☀️ Gündüz: ${gunduzCount}</span>` : '';
             tHtml += geceCount > 0 ? `<span class="need-staff" style="background:#475569;">🌙 Gece: ${geceCount}</span>` : '';
+            tHtml += birbirCount > 0 ? `<span class="need-staff" style="background:#8b5cf6;">⚖️ Bir-Bir: ${birbirCount}</span>` : '';
+
             const iznCount = gunlukKayitlar.filter(x => x.tur === 'İzinli').length;
             const rapCount = gunlukKayitlar.filter(x => x.tur === 'Raporlu').length;
+            
             dayDiv.innerHTML = `<div class="cal-date"><span>${day}</span><span style="font-size:8px; color:var(--accent)">${calisanGrup.split(' ')[0]}.G</span></div>
                 <div class="cal-content">${(iznCount+rapCount) > 0 ? `<div style="font-size:10px;">${iznCount>0?'🏖️'+iznCount:''} ${rapCount>0?'🏥'+rapCount:''}</div>` : ''}${tHtml}</div>`;
             container.appendChild(dayDiv);
